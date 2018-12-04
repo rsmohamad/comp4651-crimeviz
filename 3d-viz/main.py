@@ -77,7 +77,7 @@ def getFilteredPoints(startDate, endDate, startTime, endTime, category):
     if not category == 'ALL':
         filteredDF = filterByCategory(filteredDF, category)
 
-    pointsDF = filteredDF.select("X", "Y").rdd.map(lambda row: {"COORDINATE": [row["X"], row["Y"]]})
+    pointsDF = filteredDF.select("X", "Y").rdd.map(lambda row: [row["X"], row["Y"]])
     return pointsDF.collect()
 
 
@@ -88,12 +88,13 @@ def getFilteredDistricts(startDate, endDate, startTime, endTime, category):
     if not category == 'ALL':
         filteredDF = filterByCategory(filteredDF, category)
 
-    sqlContext.sql("DROP TABLE IF EXISTS crime_dataset")
-    sqlContext.registerDataFrameAsTable(filteredDF, "crime_dataset")
-    districtsDF = (sqlContext.sql(
-        "select PdDistrict as d, avg(X) as x, avg(Y) as y, count(*) as o from crime_dataset group by PdDistrict"))
+    districtsDF1 = filteredDF.groupBy("PdDistrict").avg("X", "Y")
+    districtsDF2 = filteredDF.groupBy("PdDistrict").count()
+    districtsDF = districtsDF1.join(districtsDF2, "PdDistrict")
 
-    return districtsDF.rdd.map(lambda r: (r["d"], r["x"], r["y"], r["o"])).collect()
+    return districtsDF.rdd.map(lambda r: {"d": r["PdDistrict"], "c": [r["avg(X)"], r["avg(Y)"]], "o": r["count"]}).collect()
+
+
 
 
 import flask
@@ -113,18 +114,30 @@ def handleData():
     startT = request.args.get(key='startTime', default='0')
     endT = request.args.get(key='endTime', default='23')
 
-    print(startD, endD)
-
     startDate = parseDate(startD)
     endDate = parseDate(endD)
-
-    print(startDate, endDate)
-
     startTime = datetime.datetime(year=1, month=1, day=1, hour=int(startT), minute=0)
     endTime = datetime.datetime(year=1, month=1, day=1, hour=int(endT), minute=59)
 
     crimePoints = getFilteredPoints(startDate, endDate, startTime, endTime, cat)
     return json.dumps(crimePoints)
+
+
+@app.route('/districts', methods=['GET'])
+def handleDistricts():
+    cat = request.args.get(key='cat', default='ALL')
+    startD = request.args.get(key='startDate', default='1/1/2018')
+    endD = request.args.get(key='endDate', default='2/2/2018')
+    startT = request.args.get(key='startTime', default='0')
+    endT = request.args.get(key='endTime', default='23')
+
+    startDate = parseDate(startD)
+    endDate = parseDate(endD)
+    startTime = datetime.datetime(year=1, month=1, day=1, hour=int(startT), minute=0)
+    endTime = datetime.datetime(year=1, month=1, day=1, hour=int(endT), minute=59)
+
+    districts = getFilteredDistricts(startDate, endDate, startTime, endTime, cat)
+    return json.dumps(districts)
 
 
 @app.route('/categories')
