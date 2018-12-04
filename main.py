@@ -1,6 +1,9 @@
 import os
+import datetime
+
 from pyspark import SQLContext, SparkContext
 from pyspark.sql.types import *
+from pyspark.sql.functions import udf
 
 sc = SparkContext()
 sqlContext = SQLContext(sc)
@@ -27,7 +30,6 @@ crimeDF = (sqlContext.read
            .option('header', 'true')
            .load(dataPath, schema=crimeDataSchema))
 
-import datetime
 
 def parseDate(dateStr):
     tokens = dateStr.split("/")
@@ -44,8 +46,6 @@ def parseTime(timeStr):
     return datetime.datetime(year=1, month=1, day=1, hour=hour, minute=minute)
 
 
-from pyspark.sql.functions import udf
-
 crimeDF = (crimeDF.withColumn("Date_tmp", udf(parseDate, DateType())(crimeDF.Date))
            .withColumn("Time_tmp", udf(parseTime, TimestampType())(crimeDF.Time))
            .withColumnRenamed("Time", "TimeStr")
@@ -54,6 +54,7 @@ crimeDF = (crimeDF.withColumn("Date_tmp", udf(parseDate, DateType())(crimeDF.Dat
            .withColumnRenamed("Time_tmp", "Time")).cache()
 
 categories = crimeDF.select("Category").distinct().collect()
+categories = list(map(lambda e: e[0], categories))
 crimeDF.printSchema()
 
 
@@ -73,7 +74,7 @@ def getFilteredPoints(startDate, endDate, startTime, endTime, category):
     filteredDF = filterByDate(crimeDF, startDate, endDate)
     filteredDF = filterByTime(filteredDF, startTime, endTime)
 
-    if not category == 'all':
+    if not category == 'ALL':
         filteredDF = filterByCategory(filteredDF, category)
 
     pointsDF = filteredDF.select("X", "Y").rdd.map(lambda row: {"COORDINATE": [row["X"], row["Y"]]})
@@ -84,8 +85,8 @@ def getFilteredDistricts(startDate, endDate, startTime, endTime, category):
     filteredDF = filterByDate(crimeDF, startDate, endDate)
     filteredDF = filterByTime(filteredDF, startTime, endTime)
 
-    if not category == 'all':
-        filteredDF = filterByCategory(crimeDF, category)
+    if not category == 'ALL':
+        filteredDF = filterByCategory(filteredDF, category)
 
     sqlContext.sql("DROP TABLE IF EXISTS crime_dataset")
     sqlContext.registerDataFrameAsTable(filteredDF, "crime_dataset")
@@ -103,16 +104,21 @@ from flask import request
 app = flask.Flask(__name__)
 CORS(app)
 
+
 @app.route('/data', methods=['GET'])
 def handleData():
-    cat = request.args.get(key='cat', default='all')
+    cat = request.args.get(key='cat', default='ALL')
     startD = request.args.get(key='startDate', default='1/1/2018')
     endD = request.args.get(key='endDate', default='2/2/2018')
     startT = request.args.get(key='startTime', default='0')
     endT = request.args.get(key='endTime', default='23')
 
+    print(startD, endD)
+
     startDate = parseDate(startD)
     endDate = parseDate(endD)
+
+    print(startDate, endDate)
 
     startTime = datetime.datetime(year=1, month=1, day=1, hour=int(startT), minute=0)
     endTime = datetime.datetime(year=1, month=1, day=1, hour=int(endT), minute=59)

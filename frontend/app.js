@@ -5,13 +5,10 @@ import {InteractiveMap, StaticMap} from 'react-map-gl';
 import DeckGL, {HexagonLayer, MapController, MapView, FirstPersonView, GridLayer} from 'deck.gl';
 
 // Set your mapbox token here
-const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGFuZGk0OTAzIiwiYSI6ImNqcDZ1emFwbzE2d24zcHA3NjNtbTV6MzcifQ.SmvQNgtwXEgEwQVoeXXy3w'; // eslint-disable-line
-
-// Source data CSV
-//const DATA_URL =
-//    'https://raw.githubusercontent.com/uber-common/deck.gl-data/master/examples/3d-heatmap/heatmap-data.csv'; // eslint-disable-line
+const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGFuZGk0OTAzIiwiYSI6ImNqcDZ1emFwbzE2d24zcHA3NjNtbTV6MzcifQ.SmvQNgtwXEgEwQVoeXXy3w';
 
 const DATA_URL = 'http://localhost:5000/data';
+const CATEGORY_URL = 'http://localhost:5000/categories';
 
 export const INITIAL_VIEW_STATE = {
     longitude: -122.41,
@@ -47,8 +44,15 @@ export class ControlPanel extends Component {
     constructor() {
         super();
         this.state = {
-            gridSize: 0
-        }
+            gridSize: 0,
+            categories: ['ALL'],
+            startDate: '',
+            endDate: ''
+        };
+
+        fetch(CATEGORY_URL, {method: 'GET', mode: 'cors'})
+            .then(resp => resp.json())
+            .then(cat => this.setState({categories: ['ALL', ...cat]}));
     }
 
     handleGridSizeChange(e) {
@@ -61,8 +65,30 @@ export class ControlPanel extends Component {
         this.props.onGridSizeChange(this.state.gridSize);
     }
 
+    handleStartDateChange(e) {
+        console.log("StartDate " + e.target.value);
+        this.setState({startDate: e.target.value});
+        let dateToken = e.target.value.split("-");
+        let newDate = [dateToken[1], dateToken[2], dateToken[0]].join("/");
+        this.props.onStartDateChange(newDate)
+    }
+
+    handleEndDateChange(e) {
+        console.log("EndDate " + e.target.value);
+        this.setState({endDate: e.target.value});
+        let dateToken = e.target.value.split("-");
+        let newDate = [dateToken[1], dateToken[2], dateToken[0]].join("/");
+        this.props.onEndDateChange(newDate)
+    }
+
+    handleCategoryChange(e) {
+        console.log(e.target.value);
+        this.props.onCategoryChange(e.target.value)
+    }
+
     render() {
-        let cat = [];
+        const categoryOpts = this.state.categories.map((cat) => <option value={cat}>{cat}</option>);
+        const {startDate, endDate} = this.state;
 
         return (
             <div className="card rounded-0" style={{width: "25vw"}}>
@@ -72,21 +98,33 @@ export class ControlPanel extends Component {
                     <form>
                         <div className="form-group row">
                             <label htmlFor="formControlRange" className="col-form-label col-sm-4">Cell Size</label>
-                            <input type="range" className="form-control-range col-sm-8" id="formControlRange"
+                            <input type="range" className="form-control-range col-sm-8"
+                                   id="formControlRange"
                                    onMouseUp={e => this.handleGridSizeMouseUp(e)}
                                    onChange={e => this.handleGridSizeChange(e)}/>
                         </div>
-                        <div className="form-group row">
-                            <div className="dropdown col-sm-12">
-                                <select>
 
-                                    <option value="volvo">Volvo</option>
-                                    <option value="saab">Saab</option>
-                                    <option value="mercedes">Mercedes</option>
-                                    <option value="audi">Audi</option>
-                                </select>
-                            </div>
+                        <div className="form-group row">
+                            <label htmlFor="categoryDropDown" className="col-form-label col-sm-4">Category</label>
+                            <select id="categoryDropdown" className="col-sm-8"
+                                    onChangeCapture={e => this.handleCategoryChange(e)}>
+                                {categoryOpts}
+                            </select>
                         </div>
+
+                        <div className="form-group row">
+                            <label htmlFor="startDate" className="col-form-label col-sm-4">Start Date</label>
+                            <input className="col-sm-8" type="date" id="startDate" min="2000-01-01" max={endDate}
+                                   onChangeCapture={e => this.handleStartDateChange(e)}/>
+                        </div>
+
+                        <div className="form-group row">
+                            <label htmlFor="endDate" className="col-form-label col-sm-4">End Date</label>
+                            <input className="col-sm-8" type="date" id="endDate" min={startDate} max="2018-12-31"
+                                   onChangeCapture={e => this.handleEndDateChange(e)}/>
+                        </div>
+
+
                     </form>
                 </div>
             </div>
@@ -104,7 +142,15 @@ export class App extends Component {
         super(props);
         this.state = {
             elevationScale: elevationScale.min,
-            gridSize: 50
+            data: [],
+            radius: 50,
+            upperPercentile: 100,
+            coverage: 1,
+            gridSize: 50,
+
+            category: 'ALL',
+            startDate: '1/1/2018',
+            endDate: '2/2/2018'
         };
 
         this.startAnimationTimer = null;
@@ -112,6 +158,10 @@ export class App extends Component {
 
         this._startAnimate = this._startAnimate.bind(this);
         this._animateHeight = this._animateHeight.bind(this);
+
+        fetch(DATA_URL, {method: 'GET', mode: 'cors'})
+            .then(resp => resp.json())
+            .then(data => this.setState({data: data}))
     }
 
     componentDidMount() {
@@ -126,6 +176,24 @@ export class App extends Component {
 
     componentWillUnmount() {
         this._stopAnimate();
+    }
+
+    componentWillUpdate(nextProps, nextState, nextContext) {
+        if (this.state.category !== nextState.category ||
+            this.state.startDate !== nextState.startDate ||
+            this.state.endDate !== nextState.endDate) {
+
+            let PARAMS = "cat=" + encodeURIComponent(nextState.category);
+            PARAMS += "&startDate=" + encodeURIComponent(nextState.startDate);
+            PARAMS += "&endDate=" + encodeURIComponent(nextState.endDate);
+
+            const URL = DATA_URL + "?" + PARAMS;
+            console.log(URL);
+
+            fetch(URL, {method: 'GET', mode: 'cors'})
+                .then(resp => resp.json())
+                .then(data => this.setState({data: data}))
+        }
     }
 
     _animate() {
@@ -153,8 +221,7 @@ export class App extends Component {
     }
 
     _renderLayers() {
-        const {data, radius = 50, upperPercentile = 100, coverage = 1} = this.props;
-        const {gridSize} = this.state;
+        const {data, radius, upperPercentile, coverage, gridSize} = this.state;
 
         return [
             new HexagonLayer({
@@ -177,10 +244,20 @@ export class App extends Component {
     }
 
     onSizeChange(val) {
-        this.setState({
-            gridSize: (val + 1) * 1/5
-        });
+        this.setState({gridSize: (val + 1) * 1 / 5});
         console.log(this.state.gridSize)
+    }
+
+    onCategoryChange(cat) {
+        this.setState({category: cat})
+    }
+
+    onStartDateChange(date) {
+        this.setState({startDate: date})
+    }
+
+    onEndDateChange(date) {
+        this.setState({endDate: date})
     }
 
     render() {
@@ -206,7 +283,10 @@ export class App extends Component {
                 </DeckGL>
 
                 <div style={{position: 'absolute', top: 10, right: 10}}>
-                    <ControlPanel onGridSizeChange={val => this.onSizeChange(val)}/>
+                    <ControlPanel onGridSizeChange={val => this.onSizeChange(val)}
+                                  onCategoryChange={cat => this.onCategoryChange(cat)}
+                                  onStartDateChange={date => this.onStartDateChange(date)}
+                                  onEndDateChange={date => this.onEndDateChange(date)}/>
                 </div>
             </div>
         );
@@ -216,7 +296,4 @@ export class App extends Component {
 export function renderToDOM(container) {
     render(<App/>, container);
 
-    fetch(DATA_URL, {method: 'GET', mode: 'cors'})
-        .then(resp => resp.json())
-        .then(data => render(<App data={data}/>, container))
 }
