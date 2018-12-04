@@ -22,33 +22,102 @@ crimeDataSchema = StructType([StructField("IncidntNum", LongType(), True),
                               StructField("PdId", LongType(), True)])
 
 crimeDF = (sqlContext.read
-           .format('com.databricks.spark.csv')
+           .format('csv')
            .option('delimiter', ',')
            .option('header', 'true')
            .load(dataPath, schema=crimeDataSchema))
 
-# Register dataframe as sql table
-sqlContext.sql("DROP TABLE IF EXISTS crime_dataset")
-sqlContext.registerDataFrameAsTable(crimeDF, "crime_dataset")
+import datetime
 
-# lat = sqlContext.sql("select Y from crime_dataset").rdd.map(lambda row: (row["Y"])).take(500)
-# lon = sqlContext.sql("select X from crime_dataset").rdd.map(lambda row: (row["X"])).take(500)
+def parseDate(dateStr):
+    tokens = dateStr.split("/")
+    month = int(tokens[0])
+    date = int(tokens[1])
+    year = int(tokens[2])
+    return datetime.date(year, month, date)
 
-crimePoints = (sqlContext.sql("select X, Y from crime_dataset")
-               .rdd.map(lambda row: {"COORDINATE": [row["X"], row["Y"]]})).take(15000)
 
-categories = (sqlContext.sql("select distinct Category from crime_dataset").rdd.map(lambda row: row["Category"])).collect()
+def parseTime(timeStr):
+    tokens = timeStr.split(":")
+    hour = int(tokens[0])
+    minute = int(tokens[1])
+    return datetime.datetime(year=1, month=1, day=1, hour=hour, minute=minute)
+
+
+from pyspark.sql.functions import udf
+
+crimeDF = (crimeDF.withColumn("Date_tmp", udf(parseDate, DateType())(crimeDF.Date))
+           .withColumn("Time_tmp", udf(parseTime, TimestampType())(crimeDF.Time))
+           .withColumnRenamed("Time", "TimeStr")
+           .withColumnRenamed("Date", "DateStr")
+           .withColumnRenamed("Date_tmp", "Date")
+           .withColumnRenamed("Time_tmp", "Time")).cache()
+
+categories = crimeDF.select("Category").distinct().collect()
+crimeDF.printSchema()
+
+
+def filterByDate(df, startDate, endDate):
+    return df.filter(df.Date > startDate).filter(df.Date < endDate)
+
+
+def filterByTime(df, startTime, endTime):
+    return df.filter(df.Time > startTime).filter(df.Time < endTime)
+
+
+def filterByCategory(df, category):
+    return df.filter(df.Category == category)
+
+
+def getFilteredPoints(startDate, endDate, startTime, endTime, category):
+    filteredDF = filterByDate(crimeDF, startDate, endDate)
+    filteredDF = filterByTime(filteredDF, startTime, endTime)
+
+    if not category == 'all':
+        filteredDF = filterByCategory(filteredDF, category)
+
+    pointsDF = filteredDF.select("X", "Y").rdd.map(lambda row: {"COORDINATE": [row["X"], row["Y"]]})
+    return pointsDF.collect()
+
+
+def getFilteredDistricts(startDate, endDate, startTime, endTime, category):
+    filteredDF = filterByDate(crimeDF, startDate, endDate)
+    filteredDF = filterByTime(filteredDF, startTime, endTime)
+
+    if not category == 'all':
+        filteredDF = filterByCategory(crimeDF, category)
+
+    sqlContext.sql("DROP TABLE IF EXISTS crime_dataset")
+    sqlContext.registerDataFrameAsTable(filteredDF, "crime_dataset")
+    districtsDF = (sqlContext.sql(
+        "select PdDistrict as d, avg(X) as x, avg(Y) as y, count(*) as o from crime_dataset group by PdDistrict"))
+
+    return districtsDF.rdd.map(lambda r: (r["d"], r["x"], r["y"], r["o"])).collect()
+
 
 import flask
 import json
 from flask_cors import CORS
+from flask import request
 
 app = flask.Flask(__name__)
 CORS(app)
 
-
 @app.route('/data', methods=['GET'])
 def handleData():
+    cat = request.args.get(key='cat', default='all')
+    startD = request.args.get(key='startDate', default='1/1/2018')
+    endD = request.args.get(key='endDate', default='2/2/2018')
+    startT = request.args.get(key='startTime', default='0')
+    endT = request.args.get(key='endTime', default='23')
+
+    startDate = parseDate(startD)
+    endDate = parseDate(endD)
+
+    startTime = datetime.datetime(year=1, month=1, day=1, hour=int(startT), minute=0)
+    endTime = datetime.datetime(year=1, month=1, day=1, hour=int(endT), minute=59)
+
+    crimePoints = getFilteredPoints(startDate, endDate, startTime, endTime, cat)
     return json.dumps(crimePoints)
 
 
