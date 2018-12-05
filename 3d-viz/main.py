@@ -8,7 +8,8 @@ from pyspark.sql.functions import udf
 sc = SparkContext()
 sqlContext = SQLContext(sc)
 
-dataPath = 'file://' + os.path.abspath('data/Police_Department_Incident_Reports__Historical_2003_to_May_2018.csv')
+dataPath = 'file://' + os.path.abspath('../data/Police_Department_Incident_Reports__Historical_2003_to_May_2018.csv')
+dataPath = 'file://' + os.path.abspath('~/crime.csv')
 
 crimeDataSchema = StructType([StructField("IncidntNum", LongType(), True),
                               StructField("Category", StringType(), True),
