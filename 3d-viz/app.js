@@ -8,8 +8,8 @@ import {InteractiveMap} from 'react-map-gl';
 // Set your mapbox token here
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGFuZGk0OTAzIiwiYSI6ImNqcDZ1emFwbzE2d24zcHA3NjNtbTV6MzcifQ.SmvQNgtwXEgEwQVoeXXy3w';
 
-//const SPARK_URL = 'http://ec2-3-0-99-230.ap-southeast-1.compute.amazonaws.com:5000';
-const SPARK_URL = 'http://localhost:5000';
+const SPARK_URL = 'http://ec2-3-0-99-230.ap-southeast-1.compute.amazonaws.com:5000';
+//const SPARK_URL = 'http://localhost:5000';
 const DATA_URL = SPARK_URL + '/data';
 const DISTRICT_URL = SPARK_URL + '/districts';
 const CATEGORY_URL = SPARK_URL + '/categories';
