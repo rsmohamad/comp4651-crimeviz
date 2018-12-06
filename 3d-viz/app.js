@@ -8,7 +8,8 @@ import {InteractiveMap} from 'react-map-gl';
 // Set your mapbox token here
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGFuZGk0OTAzIiwiYSI6ImNqcDZ1emFwbzE2d24zcHA3NjNtbTV6MzcifQ.SmvQNgtwXEgEwQVoeXXy3w';
 
-const SPARK_URL = 'https://ec2-3-0-99-230.ap-southeast-1.compute.amazonaws.com:5000';
+//const SPARK_URL = 'http://ec2-3-0-99-230.ap-southeast-1.compute.amazonaws.com:5000';
+const SPARK_URL = 'http://localhost:5000';
 const DATA_URL = SPARK_URL + '/data';
 const DISTRICT_URL = SPARK_URL + '/districts';
 const CATEGORY_URL = SPARK_URL + '/categories';
@@ -176,16 +177,6 @@ export class ControlPanel extends Component {
                             </div>
                         </div>
 
-                        <div className="form-group row">
-                            <label htmlFor="formControlRange" className="col-form-label col-sm-4">Cell Size</label>
-                            <div className="col-sm-8" id="formControlRange">
-                                <input type="range" className="form-control-range"
-                                       onMouseUp={e => this.handleGridSizeMouseUp(e)}
-                                       onChange={e => this.handleGridSizeChange(e)}/>
-                            </div>
-
-                        </div>
-
                     </form>
                 </div>
             </div>
@@ -306,6 +297,8 @@ export class App extends Component {
     _renderLayers() {
         const {data, districts, radius, upperPercentile, coverage, gridSize} = this.state;
 
+        const getHeight = points => points.map(p => p.o).reduce((a, c) => a+c);
+
         if (!this.state.isDistrict) {
             return [
                 new GridLayer({
@@ -317,7 +310,9 @@ export class App extends Component {
                     elevationRange: [0, 50],
                     elevationScale: this.state.elevationScale,
                     extruded: true,
-                    getPosition: d => d,
+                    getPosition: d => d.c,
+                    getColorValue: getHeight,
+                    getElevationValue: getHeight,
                     lightSettings: LIGHT_SETTINGS,
                     onHover: this.props.onHover,
                     opacity: 1,

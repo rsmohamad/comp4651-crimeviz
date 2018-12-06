@@ -1,4 +1,5 @@
 import datetime
+import os
 
 from pyspark import SQLContext, SparkContext
 from pyspark.sql.types import *
@@ -12,7 +13,8 @@ from flask import request
 sc = SparkContext()
 sqlContext = SQLContext(sc)
 
-dataPath = 's3a://comp4651-crimeviz/sfcrimes.csv'
+dataPath = 'file://' + os.path.abspath('data/sfcrimes.csv')
+#dataPath = 's3a://comp4651-crimeviz/sfcrimes.csv'
 
 crimeDataSchema = StructType([StructField("IncidntNum", LongType(), True),
                               StructField("Category", StringType(), True),
@@ -57,6 +59,7 @@ crimeDF = (crimeDF.withColumn("Date_tmp", udf(parseDate, DateType())(crimeDF.Dat
            .withColumnRenamed("Date_tmp", "Date")
            .withColumnRenamed("Time_tmp", "Time")).cache()
 
+
 categories = crimeDF.select("Category").distinct().collect()
 categories = list(map(lambda e: e[0], categories))
 crimeDF.printSchema()
@@ -74,29 +77,43 @@ def filterByCategory(df, category):
     return df.filter(df.Category == category)
 
 
-def getFilteredPoints(startDate, endDate, startTime, endTime, category):
+def applyFilter(startDate, endDate, startTime, endTime, category):
     filteredDF = filterByDate(crimeDF, startDate, endDate)
     filteredDF = filterByTime(filteredDF, startTime, endTime)
 
     if not category == 'ALL':
         filteredDF = filterByCategory(filteredDF, category)
 
-    pointsDF = filteredDF.select("X", "Y").rdd.map(lambda row: [row["X"], row["Y"]])
-    return pointsDF.collect()
+    return filteredDF
+
+
+def discretize(value, resolution):
+    return round(value/resolution) * resolution
+
+
+def getFilteredPoints(startDate, endDate, startTime, endTime, category):
+    filteredDF = applyFilter(startDate, endDate, startTime, endTime, category)
+
+    # Discretize points into X, Y bins
+    pointsRDD = (filteredDF.select("X", "Y").rdd
+                .map(lambda row: [row["X"], row["Y"]])
+                .map(lambda point: ((discretize(point[0], 0.001), discretize(point[1], 0.001)), 1))
+                .reduceByKey(lambda count, acc: count + acc)
+                .map(lambda c: {"c":c[0], "o":c[1]}))
+
+    return pointsRDD.collect()
 
 
 def getFilteredDistricts(startDate, endDate, startTime, endTime, category):
-    filteredDF = filterByDate(crimeDF, startDate, endDate)
-    filteredDF = filterByTime(filteredDF, startTime, endTime)
+    filteredDF = applyFilter(startDate, endDate, startTime, endTime, category)
 
-    if not category == 'ALL':
-        filteredDF = filterByCategory(filteredDF, category)
+    left = filteredDF.groupBy("PdDistrict").avg("X", "Y")
+    right = filteredDF.groupBy("PdDistrict").count()
+    districtsDF = left.join(right, "PdDistrict")
 
-    districtsDF1 = filteredDF.groupBy("PdDistrict").avg("X", "Y")
-    districtsDF2 = filteredDF.groupBy("PdDistrict").count()
-    districtsDF = districtsDF1.join(districtsDF2, "PdDistrict")
-
-    return districtsDF.rdd.map(lambda r: {"d": r["PdDistrict"], "c": [r["avg(X)"], r["avg(Y)"]], "o": r["count"]}).collect()
+    return (districtsDF.rdd
+            .map(lambda r: {"d": r["PdDistrict"], "c": [r["avg(X)"], r["avg(Y)"]], "o": r["count"]})
+            .collect())
 
 
 app = flask.Flask(__name__)
@@ -142,4 +159,4 @@ def handleCategory():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', ssl_context='adhoc')
+    app.run(host='0.0.0.0')
