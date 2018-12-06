@@ -1,15 +1,22 @@
-import os
 import datetime
+import os
+import numpy as np
 
 from pyspark import SQLContext, SparkContext
 from pyspark.sql.types import *
 from pyspark.sql.functions import udf
+from pyspark.ml.clustering import BisectingKMeans
+
+import flask
+import json
+from flask_cors import CORS
+from flask import request
 
 sc = SparkContext()
 sqlContext = SQLContext(sc)
 
-dataPath = 'file://' + os.path.abspath('../data/Police_Department_Incident_Reports__Historical_2003_to_May_2018.csv')
-dataPath = 'file://' + os.path.abspath('~/crime.csv')
+dataPath = 'file://' + os.path.abspath('data/sfcrimes.csv')
+# dataPath = 's3a://comp4651-crimeviz/sfcrimes.csv'
 
 crimeDataSchema = StructType([StructField("IncidntNum", LongType(), True),
                               StructField("Category", StringType(), True),
@@ -71,37 +78,77 @@ def filterByCategory(df, category):
     return df.filter(df.Category == category)
 
 
-def getFilteredPoints(startDate, endDate, startTime, endTime, category):
+def applyFilter(startDate, endDate, startTime, endTime, category):
     filteredDF = filterByDate(crimeDF, startDate, endDate)
     filteredDF = filterByTime(filteredDF, startTime, endTime)
 
     if not category == 'ALL':
         filteredDF = filterByCategory(filteredDF, category)
 
-    pointsDF = filteredDF.select("X", "Y").rdd.map(lambda row: [row["X"], row["Y"]])
-    return pointsDF.collect()
+    return filteredDF
+
+
+def discretize(value, resolution):
+    return round(value / resolution) * resolution
+
+
+def getFilteredPoints(startDate, endDate, startTime, endTime, category):
+    filteredDF = applyFilter(startDate, endDate, startTime, endTime, category)
+
+    # Discretize points into X, Y bins
+    pointsRDD = (filteredDF.select("X", "Y").rdd
+                 .map(lambda row: (row["X"], row["Y"]))
+                 .map(lambda point: ((discretize(point[0], 0.001), discretize(point[1], 0.001)), 1))
+                 .reduceByKey(lambda count, acc: count + acc)
+                 .map(lambda c: {"c": c[0], "o": c[1]}))
+
+    return pointsRDD.collect()
 
 
 def getFilteredDistricts(startDate, endDate, startTime, endTime, category):
-    filteredDF = filterByDate(crimeDF, startDate, endDate)
-    filteredDF = filterByTime(filteredDF, startTime, endTime)
+    filteredDF = applyFilter(startDate, endDate, startTime, endTime, category)
 
-    if not category == 'ALL':
-        filteredDF = filterByCategory(filteredDF, category)
+    left = filteredDF.groupBy("PdDistrict").avg("X", "Y")
+    right = filteredDF.groupBy("PdDistrict").count()
+    districtsDF = left.join(right, "PdDistrict")
 
-    districtsDF1 = filteredDF.groupBy("PdDistrict").avg("X", "Y")
-    districtsDF2 = filteredDF.groupBy("PdDistrict").count()
-    districtsDF = districtsDF1.join(districtsDF2, "PdDistrict")
-
-    return districtsDF.rdd.map(lambda r: {"d": r["PdDistrict"], "c": [r["avg(X)"], r["avg(Y)"]], "o": r["count"]}).collect()
+    return (districtsDF.rdd
+            .map(lambda r: {"d": r["PdDistrict"], "c": (r["avg(X)"], r["avg(Y)"]), "o": r["count"]})
+            .collect())
 
 
+from pyspark.ml.feature import VectorAssembler
 
 
-import flask
-import json
-from flask_cors import CORS
-from flask import request
+def getTopClusters(startDate, endDate, startTime, endTime, category):
+    filteredDF = applyFilter(startDate, endDate, startTime, endTime, category).cache()
+
+    # Extract X, Y into feature vector
+    vectorizer = VectorAssembler()
+    vectorizer.setInputCols(["X", "Y"])
+    vectorizer.setOutputCol("features")
+    pointsDF = vectorizer.transform(filteredDF).cache()
+
+    # Hierarchical K means
+    bkm = BisectingKMeans().setK(10).setSeed(7).setMaxIter(7)
+    model = bkm.fit(pointsDF)
+
+    # RDD of (clusterIndex, size)
+    clustersRDD = (model.transform(pointsDF)
+                   .select("prediction").rdd
+                   .map(lambda row: (row["prediction"], 1))
+                   .reduceByKey(lambda a, c: a + c))
+
+    clusters = model.clusterCenters()
+    clusterRV = clustersRDD.collect()
+
+    rv = []
+    for ind, num in clusterRV:
+        val = {"c": (clusters[ind][0], clusters[ind][1]), "o": num}
+        rv.append(val)
+
+    return rv
+
 
 app = flask.Flask(__name__)
 CORS(app)
@@ -141,10 +188,27 @@ def handleDistricts():
     return json.dumps(districts)
 
 
+@app.route('/clusters', methods=['GET'])
+def handleClusters():
+    cat = request.args.get(key='cat', default='ALL')
+    startD = request.args.get(key='startDate', default='1/1/2018')
+    endD = request.args.get(key='endDate', default='2/2/2018')
+    startT = request.args.get(key='startTime', default='0')
+    endT = request.args.get(key='endTime', default='23')
+
+    startDate = parseDate(startD)
+    endDate = parseDate(endD)
+    startTime = datetime.datetime(year=1, month=1, day=1, hour=int(startT), minute=0)
+    endTime = datetime.datetime(year=1, month=1, day=1, hour=int(endT), minute=59)
+
+    clusters = getTopClusters(startDate, endDate, startTime, endTime, cat)
+    return json.dumps(clusters)
+
+
 @app.route('/categories')
 def handleCategory():
     return json.dumps(categories)
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0')

@@ -1,15 +1,19 @@
 /* global window */
 import React, {Component} from 'react';
 import {render} from 'react-dom';
-import {InteractiveMap, StaticMap} from 'react-map-gl';
-import DeckGL, {HexagonLayer, MapController, MapView, FirstPersonView, GridLayer, ScatterplotLayer} from 'deck.gl';
+
+import DeckGL, {MapView, GridLayer, ScatterplotLayer} from 'deck.gl';
+import {InteractiveMap} from 'react-map-gl';
 
 // Set your mapbox token here
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGFuZGk0OTAzIiwiYSI6ImNqcDZ1emFwbzE2d24zcHA3NjNtbTV6MzcifQ.SmvQNgtwXEgEwQVoeXXy3w';
 
-const DATA_URL = 'http://localhost:5000/data';
-const DISTRICT_URL = 'http://localhost:5000/districts';
-const CATEGORY_URL = 'http://localhost:5000/categories';
+const SPARK_URL = 'http://ec2-3-0-99-230.ap-southeast-1.compute.amazonaws.com:5000';
+//const SPARK_URL = 'http://localhost:5000';
+const DATA_URL = SPARK_URL + '/data';
+const DISTRICT_URL = SPARK_URL + '/districts';
+const CATEGORY_URL = SPARK_URL + '/categories';
+const CLUSTER_URL = SPARK_URL + '/clusters';
 
 export const INITIAL_VIEW_STATE = {
     longitude: -122.41,
@@ -88,8 +92,7 @@ export class ControlPanel extends Component {
     }
 
     handleViewModeChange(e) {
-        const isDistrict = e.target.value === "1";
-        this.props.onViewModeChange(isDistrict)
+        this.props.onViewModeChange(e.target.value)
     }
 
     handleStartHour(e) {
@@ -106,64 +109,74 @@ export class ControlPanel extends Component {
         const hours = Array.from(Array(24).keys()).map(h => <option value={h}>{h}</option>);
 
         return (
-            <div className="card" style={{width: "25vw", filter: "opacity(60)"}}>
+            <div className="card bg-dark text-monospace text-light" style={{width: "25vw", filter: "opacity(60)"}}>
+                <div className="card-header">
+                    <h5 className="card-title"><b>San Francisco Crime Data</b></h5>
+                </div>
                 <div className="card-body">
-                    <span className="card-title"><b>San Francisco Crime Data</b></span>
-                    <br/>
+
+
                     <form>
                         <div className="form-group row">
-                            <label htmlFor="formControlRange" className="col-form-label col-sm-4">Cell Size</label>
-                            <input type="range" className="form-control-range col-sm-8"
-                                   id="formControlRange"
-                                   onMouseUp={e => this.handleGridSizeMouseUp(e)}
-                                   onChange={e => this.handleGridSizeChange(e)}/>
-                        </div>
-
-                        <div className="form-group row">
                             <label htmlFor="viewMode" className="col-form-label col-sm-4">Category</label>
-                            <select id="viewMode" className="col-sm-8 form-control"
-                                    onChangeCapture={e => this.handleCategoryChange(e)}>
-                                {categoryOpts}
-                            </select>
+                            <div className="col-sm-8">
+                                <select id="viewMode" className="form-control"
+                                        onChangeCapture={e => this.handleCategoryChange(e)}>
+                                    {categoryOpts}
+                                </select>
+                            </div>
                         </div>
 
                         <div className="form-group row">
                             <label htmlFor="categoryDropDown" className="col-form-label col-sm-4">View</label>
-                            <select id="categoryDropdown" className="col-sm-8 form-control"
-                                    onChangeCapture={e => this.handleViewModeChange(e)}>
-                                <option value="0">Crime Occurences</option>
-                                <option value="1">By District</option>
-                            </select>
+                            <div className="col-sm-8">
+                                <select id="categoryDropdown" className="form-control"
+                                        onChangeCapture={e => this.handleViewModeChange(e)}>
+                                    <option value="0">3D Heatmap</option>
+                                    <option value="1">By District</option>
+                                    <option value="2">Crime Hotspots</option>
+                                </select>
+                            </div>
+
                         </div>
 
                         <div className="form-group row">
                             <label htmlFor="startDate" className="col-form-label col-sm-4">Start Date</label>
-                            <input className="col-sm-8 form-control" type="date" id="startDate" min="2000-01-01" max={endDate}
-                                   onChangeCapture={e => this.handleStartDateChange(e)}/>
+                            <div className="col-sm-8">
+                                <input className="form-control" type="date" id="startDate" min="2000-01-01"
+                                       max={endDate}
+                                       onChangeCapture={e => this.handleStartDateChange(e)}/>
+                            </div>
                         </div>
 
                         <div className="form-group row">
                             <label htmlFor="endDate" className="col-form-label col-sm-4">End Date</label>
-                            <input className="col-sm-8 form-control" type="date" id="endDate" min={startDate} max="2018-12-31"
-                                   onChangeCapture={e => this.handleEndDateChange(e)}/>
+                            <div className="col-sm-8">
+                                <input className="form-control" type="date" id="endDate" min={startDate}
+                                       max="2018-12-31"
+                                       onChangeCapture={e => this.handleEndDateChange(e)}/>
+                            </div>
                         </div>
 
                         <div className="form-group row">
                             <label htmlFor="viewMode" className="col-form-label col-sm-4">Start Hour</label>
-                            <select id="viewMode" className="col-sm-8 form-control"
-                                    onChangeCapture={e => this.handleStartHour(e)}>
-                                {hours}
-                            </select>
+                            <div className="col-sm-8">
+                                <select id="viewMode" className="form-control"
+                                        onChangeCapture={e => this.handleStartHour(e)}>
+                                    {hours}
+                                </select>
+                            </div>
                         </div>
 
                         <div className="form-group row">
                             <label htmlFor="viewMode" className="col-form-label col-sm-4">End Hour</label>
-                            <select id="viewMode" className="col-sm-8 form-control"
-                                    onChangeCapture={e => this.handleEndHour(e)}>
-                                {hours}
-                            </select>
+                            <div className="col-sm-8">
+                                <select id="viewMode" className="form-control"
+                                        onChangeCapture={e => this.handleEndHour(e)}>
+                                    {hours}
+                                </select>
+                            </div>
                         </div>
-
 
                     </form>
                 </div>
@@ -188,7 +201,7 @@ export class App extends Component {
             upperPercentile: 100,
             coverage: 1,
             gridSize: 50,
-            isDistrict: false,
+            isDistrict: '0',
 
             category: 'ALL',
             startDate: '1/1/2018',
@@ -207,9 +220,9 @@ export class App extends Component {
             .then(resp => resp.json())
             .then(data => this.setState({data: data}));
 
-        fetch(DISTRICT_URL, {method: 'GET', mode: 'cors'})
-            .then(resp => resp.json())
-            .then(data => this.setState({districts: data}))
+        // fetch(DISTRICT_URL, {method: 'GET', mode: 'cors'})
+        //     .then(resp => resp.json())
+        //     .then(data => this.setState({districts: data}))
     }
 
     componentDidMount() {
@@ -229,24 +242,46 @@ export class App extends Component {
     componentWillUpdate(nextProps, nextState, nextContext) {
         if (this.state.category !== nextState.category ||
             this.state.startDate !== nextState.startDate ||
-            this.state.endDate !== nextState.endDate) {
+            this.state.endDate !== nextState.endDate ||
+            this.state.startHour !== nextState.startHour ||
+            this.state.endHour !== nextState.endHour ||
+            this.state.isDistrict !== nextState.isDistrict) {
 
             let PARAMS = "cat=" + encodeURIComponent(nextState.category);
             PARAMS += "&startDate=" + encodeURIComponent(nextState.startDate);
             PARAMS += "&endDate=" + encodeURIComponent(nextState.endDate);
+            PARAMS += "&startTime=" + encodeURIComponent(nextState.startHour);
+            PARAMS += "&endTime=" + encodeURIComponent(nextState.endHour);
 
-            if (!this.state.isDistrict) {
-                const D_URL = DATA_URL + "?" + PARAMS;
-                fetch(D_URL, {method: 'GET', mode: 'cors'})
-                    .then(resp => resp.json())
-                    .then(data => this.setState({data: data}))
-            } else {
-                const D_URL = DISTRICT_URL + "?" + PARAMS;
-                console.log(D_URL);
-                fetch(D_URL, {method: 'GET', mode: 'cors'})
-                    .then(resp => resp.json())
-                    .then(data => this.setState({districts: data}))
+            switch (nextState.isDistrict) {
+                case "1": {
+                    const D_URL = DISTRICT_URL + "?" + PARAMS;
+                    console.log(D_URL);
+                    fetch(D_URL, {method: 'GET', mode: 'cors'})
+                        .then(resp => resp.json())
+                        .then(data => this.setState({districts: data}));
+                    break;
+                }
+
+                case "2": {
+                    const D_URL = CLUSTER_URL + "?" + PARAMS;
+                    console.log(D_URL);
+                    fetch(D_URL, {method: 'GET', mode: 'cors'})
+                        .then(resp => resp.json())
+                        .then(data => this.setState({clusters: data}));
+                    break;
+                }
+
+                default: {
+                    const D_URL = DATA_URL + "?" + PARAMS;
+                    console.log(D_URL);
+                    fetch(D_URL, {method: 'GET', mode: 'cors'})
+                        .then(resp => resp.json())
+                        .then(data => this.setState({data: data}))
+                }
+
             }
+
 
         }
     }
@@ -283,49 +318,69 @@ export class App extends Component {
     }
 
     _renderLayers() {
-        const {data, districts, radius, upperPercentile, coverage, gridSize} = this.state;
+        const {data, districts, clusters, radius, upperPercentile, coverage, gridSize} = this.state;
 
-        if (!this.state.isDistrict) {
-            return [
-                new GridLayer({
-                    id: 'heatmap',
-                    cellSize: gridSize,
-                    //colorRange: colorRange,
-                    coverage: coverage,
-                    data: data,
-                    elevationRange: [0, 50],
-                    elevationScale: this.state.elevationScale,
-                    extruded: true,
-                    getPosition: d => d,
-                    lightSettings: LIGHT_SETTINGS,
-                    onHover: this.props.onHover,
-                    opacity: 1,
-                    pickable: Boolean(this.props.onHover),
-                    radius: gridSize,
-                    upperPercentile: upperPercentile,
-                })
-            ];
-        } else {
-            return [
-                new ScatterplotLayer({
-                    id: 'district',
-                    data: districts,
-                    pickable: true,
-                    opacity: 0.8,
-                    radiusScale: 6,
-                    radiusMinPixels: 1,
-                    radiusMaxPixels: 250,
-                    getPosition: d => (d.c),
-                    getRadius: d => Math.sqrt(d.o) * 1.5,
-                    getColor: d => App.colorLookup(Math.min(d.o, 2000))
-                })
-            ];
+        const getHeight = points => points.map(p => p.o).reduce((a, c) => a + c);
+
+        switch (this.state.isDistrict) {
+            case "1":
+                return [
+                    new ScatterplotLayer({
+                        id: 'district',
+                        data: districts,
+                        pickable: true,
+                        opacity: 0.8,
+                        radiusScale: 6,
+                        radiusMinPixels: 1,
+                        radiusMaxPixels: 250,
+                        getPosition: d => (d.c),
+                        getRadius: d => Math.sqrt(d.o) * 1.5,
+                        getColor: d => App.colorLookup(Math.min(d.o, 2000))
+                    })
+                ];
+
+            case "2":
+                return [
+                    new ScatterplotLayer({
+                        id: 'clusters',
+                        data: clusters,
+                        pickable: true,
+                        opacity: 0.8,
+                        radiusScale: 6,
+                        radiusMinPixels: 1,
+                        radiusMaxPixels: 250,
+                        getPosition: d => (d.c),
+                        getRadius: d => Math.sqrt(d.o) * 1.5,
+                        getColor: d => App.colorLookup(Math.min(d.o, 2000))
+                    })
+                ];
+            default:
+                return [
+                    new GridLayer({
+                        id: 'heatmap',
+                        cellSize: gridSize,
+                        //colorRange: colorRange,
+                        coverage: coverage,
+                        data: data,
+                        elevationRange: [0, 50],
+                        elevationScale: this.state.elevationScale,
+                        extruded: true,
+                        getPosition: d => d.c,
+                        getColorValue: getHeight,
+                        getElevationValue: getHeight,
+                        lightSettings: LIGHT_SETTINGS,
+                        onHover: this.props.onHover,
+                        opacity: 1,
+                        pickable: Boolean(this.props.onHover),
+                        radius: gridSize,
+                        upperPercentile: upperPercentile,
+                    })
+                ];
         }
     }
 
     onSizeChange(val) {
         this.setState({gridSize: (val + 1) * 1 / 5});
-        console.log(this.state.gridSize)
     }
 
     onCategoryChange(cat) {
@@ -342,7 +397,6 @@ export class App extends Component {
 
     onViewModeChange(isDistrict) {
         this.setState({isDistrict: isDistrict});
-        console.log(this.state.districts)
     }
 
     onStartHourChange(h) {
