@@ -1,15 +1,18 @@
-import os
 import datetime
 
 from pyspark import SQLContext, SparkContext
 from pyspark.sql.types import *
 from pyspark.sql.functions import udf
 
+import flask
+import json
+from flask_cors import CORS
+from flask import request
+
 sc = SparkContext()
 sqlContext = SQLContext(sc)
 
-dataPath = 'file://' + os.path.abspath('../data/Police_Department_Incident_Reports__Historical_2003_to_May_2018.csv')
-dataPath = 'file://' + os.path.abspath('~/crime.csv')
+dataPath = 's3a://comp4651-crimeviz/sfcrimes.csv'
 
 crimeDataSchema = StructType([StructField("IncidntNum", LongType(), True),
                               StructField("Category", StringType(), True),
@@ -96,16 +99,8 @@ def getFilteredDistricts(startDate, endDate, startTime, endTime, category):
     return districtsDF.rdd.map(lambda r: {"d": r["PdDistrict"], "c": [r["avg(X)"], r["avg(Y)"]], "o": r["count"]}).collect()
 
 
-
-
-import flask
-import json
-from flask_cors import CORS
-from flask import request
-
 app = flask.Flask(__name__)
 CORS(app)
-
 
 @app.route('/data', methods=['GET'])
 def handleData():
@@ -147,4 +142,4 @@ def handleCategory():
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0', ssl_context='adhoc')
