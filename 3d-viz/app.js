@@ -51,8 +51,10 @@ export class ControlPanel extends Component {
         this.state = {
             gridSize: 0,
             categories: ['ALL'],
-            startDate: '',
-            endDate: ''
+            startDate: '2018-01-01',
+            endDate: '2018-02-02',
+            startHour: 0,
+            endHour: 23
         };
 
         fetch(CATEGORY_URL, {method: 'GET', mode: 'cors'})
@@ -96,22 +98,25 @@ export class ControlPanel extends Component {
     }
 
     handleStartHour(e) {
+        this.setState({startHour: e.target.value});
         this.props.onStartHourChange(e.target.value);
     }
 
     handleEndHour(e) {
+        this.setState({endHour: e.target.value});
         this.props.onEndHourChange(e.target.value);
     }
 
     render() {
         const categoryOpts = this.state.categories.map((cat) => <option value={cat}>{cat}</option>);
-        const {startDate, endDate} = this.state;
+        const {startDate, endDate, startHour, endHour} = this.state;
         const hours = Array.from(Array(24).keys()).map(h => <option value={h}>{h}</option>);
 
         return (
             <div className="card bg-dark text-monospace text-light" style={{width: "25vw", filter: "opacity(60)"}}>
                 <div className="card-header">
                     <h5 className="card-title"><b>San Francisco Crime Data</b></h5>
+                    <p>To see the data, allow your browser to load unsafe resources.</p>
                 </div>
                 <div className="card-body">
 
@@ -144,8 +149,8 @@ export class ControlPanel extends Component {
                             <label htmlFor="startDate" className="col-form-label col-sm-4">Start Date</label>
                             <div className="col-sm-8">
                                 <input className="form-control" type="date" id="startDate" min="2000-01-01"
-                                       max={endDate}
-                                       onChangeCapture={e => this.handleStartDateChange(e)}/>
+                                       max={endDate} value={startDate}
+                                       onChange={e => this.handleStartDateChange(e)}/>
                             </div>
                         </div>
 
@@ -153,16 +158,16 @@ export class ControlPanel extends Component {
                             <label htmlFor="endDate" className="col-form-label col-sm-4">End Date</label>
                             <div className="col-sm-8">
                                 <input className="form-control" type="date" id="endDate" min={startDate}
-                                       max="2018-12-31"
-                                       onChangeCapture={e => this.handleEndDateChange(e)}/>
+                                       max="2018-12-31" value={endDate}
+                                       onChange={e => this.handleEndDateChange(e)}/>
                             </div>
                         </div>
 
                         <div className="form-group row">
                             <label htmlFor="viewMode" className="col-form-label col-sm-4">Start Hour</label>
                             <div className="col-sm-8">
-                                <select id="viewMode" className="form-control"
-                                        onChangeCapture={e => this.handleStartHour(e)}>
+                                <select id="viewMode" className="form-control" value={startHour}
+                                        onChange={e => this.handleStartHour(e)}>
                                     {hours}
                                 </select>
                             </div>
@@ -171,8 +176,8 @@ export class ControlPanel extends Component {
                         <div className="form-group row">
                             <label htmlFor="viewMode" className="col-form-label col-sm-4">End Hour</label>
                             <div className="col-sm-8">
-                                <select id="viewMode" className="form-control"
-                                        onChangeCapture={e => this.handleEndHour(e)}>
+                                <select id="viewMode" className="form-control" value={endHour}
+                                        onChange={e => this.handleEndHour(e)}>
                                     {hours}
                                 </select>
                             </div>

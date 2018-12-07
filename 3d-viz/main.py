@@ -67,11 +67,11 @@ crimeDF.printSchema()
 
 
 def filterByDate(df, startDate, endDate):
-    return df.filter(df.Date > startDate).filter(df.Date < endDate)
+    return df.filter(df.Date >= startDate).filter(df.Date <= endDate)
 
 
 def filterByTime(df, startTime, endTime):
-    return df.filter(df.Time > startTime).filter(df.Time < endTime)
+    return df.filter(df.Time >= startTime).filter(df.Time <= endTime)
 
 
 def filterByCategory(df, category):

@@ -1,4 +1,4 @@
-SPARK_URL=spark://ec2-18-136-212-151.ap-southeast-1.compute.amazonaws.com:7077
+SPARK_URL=spark://ec2-52-221-189-69.ap-southeast-1.compute.amazonaws.com:7077
 
 init:
 	pip install -r requirements.txt
